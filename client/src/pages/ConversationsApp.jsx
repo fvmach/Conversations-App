@@ -7,6 +7,7 @@ const ConversationsApp = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isRestoringState, setIsRestoringState] = useState(true);
   
   // View states
   const [currentView, setCurrentView] = useState('services');
@@ -48,12 +49,30 @@ const ConversationsApp = () => {
   const [messageForm, setMessageForm] = useState({ author: '', body: '', attributes: '' });
   const [participantForm, setParticipantForm] = useState({ identity: '', attributes: '' });
 
-  // Search/Filter states
-  const [conversationSearch, setConversationSearch] = useState('');
-  const [messageSearch, setMessageSearch] = useState('');
-  const [participantSearch, setParticipantSearch] = useState('');
-  const [conversationSortBy, setConversationSortBy] = useState('dateCreated');
-  const [conversationSortOrder, setConversationSortOrder] = useState('desc');
+  // Helper to load filter preferences from localStorage
+  const loadFilterPreferences = () => {
+    const saved = localStorage.getItem('conversationsAppFilters');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return {};
+      }
+    }
+    return {};
+  };
+
+  const savedFilters = loadFilterPreferences();
+
+  // Search/Filter states with localStorage initialization
+  const [conversationSearch, setConversationSearch] = useState(savedFilters.conversationSearch || '');
+  const [messageSearch, setMessageSearch] = useState(savedFilters.messageSearch || '');
+  const [participantSearch, setParticipantSearch] = useState(savedFilters.participantSearch || '');
+  const [conversationSortBy, setConversationSortBy] = useState(savedFilters.conversationSortBy || 'dateCreated');
+  const [conversationSortOrder, setConversationSortOrder] = useState(savedFilters.conversationSortOrder || 'desc');
+  const [conversationStateFilter, setConversationStateFilter] = useState(savedFilters.conversationStateFilter || 'all');
+  const [conversationDateFrom, setConversationDateFrom] = useState(savedFilters.conversationDateFrom || '');
+  const [conversationDateTo, setConversationDateTo] = useState(savedFilters.conversationDateTo || '');
 
   // Cache utility functions
   const invalidateCache = (pattern) => {
@@ -67,10 +86,31 @@ const ConversationsApp = () => {
 
   // Filter and sort functions
   const filterConversations = (convs) => {
-    if (!conversationSearch.trim()) return convs;
-    
-    const search = conversationSearch.toLowerCase();
     return convs.filter(conv => {
+      // Filter by state
+      if (conversationStateFilter !== 'all' && conv.state !== conversationStateFilter) {
+        return false;
+      }
+      
+      // Filter by date range
+      if (conversationDateFrom) {
+        const convDate = new Date(conv.dateCreated);
+        const fromDate = new Date(conversationDateFrom);
+        if (convDate < fromDate) return false;
+      }
+      
+      if (conversationDateTo) {
+        const convDate = new Date(conv.dateCreated);
+        const toDate = new Date(conversationDateTo);
+        toDate.setHours(23, 59, 59, 999); // End of day
+        if (convDate > toDate) return false;
+      }
+      
+      // Text search
+      if (!conversationSearch.trim()) return true;
+      
+      const search = conversationSearch.toLowerCase();
+      
       // Search in friendly name
       if (conv.friendlyName?.toLowerCase().includes(search)) return true;
       
@@ -86,6 +126,15 @@ const ConversationsApp = () => {
         } catch (e) {
           // Invalid JSON, skip
         }
+      }
+      
+      // Search in participants (if we have participant data cached)
+      if (conv.participants && conv.participants.length > 0) {
+        const hasMatchingParticipant = conv.participants.some(p => 
+          p.identity?.toLowerCase().includes(search) ||
+          p.messagingBinding?.address?.toLowerCase().includes(search)
+        );
+        if (hasMatchingParticipant) return true;
       }
       
       return false;
@@ -170,34 +219,61 @@ const ConversationsApp = () => {
         if (savedState && servicesData) {
           try {
             const state = JSON.parse(savedState);
+            console.log('[Restore] Attempting to restore state:', state.currentView);
             
             // Restore service if we have one saved
             if (state.selectedService) {
               const service = servicesData.find(s => s.sid === state.selectedService.sid);
               if (service) {
+                console.log('[Restore] Restoring service:', service.friendlyName);
                 setSelectedService(service);
                 
-                // If we need to restore a conversation, load conversations first
-                if (state.selectedConversation) {
-                  const conversationsData = await apiClient.conversations.listServiceConversations(service.sid);
-                  setConversations(conversationsData);
+                // If we need to restore a conversation view, we'll load data in the next useEffect
+                // but we need to set the view and conversation first
+                if (state.currentView === 'conversations') {
+                  setCurrentView('conversations');
+                } else if (state.currentView === 'conversation-detail' && state.selectedConversation) {
+                  // For conversation detail, we need to load conversations first to get the full data
+                  console.log('[Restore] Restoring conversation detail view');
+                  const cacheKey = `conversations_${service.sid}`;
+                  const cached = localStorage.getItem(cacheKey);
                   
-                  const conversation = conversationsData.find(c => c.sid === state.selectedConversation.sid);
-                  if (conversation) {
-                    setSelectedConversation(conversation);
+                  if (cached) {
+                    const { data, timestamp } = JSON.parse(cached);
+                    if (Date.now() - timestamp < 5 * 60 * 1000) {
+                      setConversations(data);
+                      const conversation = data.find(c => c.sid === state.selectedConversation.sid);
+                      if (conversation) {
+                        console.log('[Restore] Found conversation in cache:', conversation.friendlyName);
+                        setSelectedConversation(conversation);
+                        setCurrentView('conversation-detail');
+                      } else {
+                        console.log('[Restore] Conversation not found in cache, falling back to conversations view');
+                        setCurrentView('conversations');
+                      }
+                    } else {
+                      console.log('[Restore] Cache expired, falling back to conversations view');
+                      setCurrentView('conversations');
+                    }
+                  } else {
+                    console.log('[Restore] No cache found, falling back to conversations view');
+                    setCurrentView('conversations');
                   }
                 }
-                
-                // Finally set the view
-                if (state.currentView) {
-                  setCurrentView(state.currentView);
-                }
+              } else {
+                console.log('[Restore] Service not found, staying on services view');
               }
+            } else {
+              console.log('[Restore] No saved service, staying on services view');
             }
           } catch (err) {
             console.error('Failed to restore state:', err);
           }
         }
+        // Mark restoration as complete
+        setIsRestoringState(false);
+      } else {
+        setIsRestoringState(false);
       }
     };
     checkAndLoad();
@@ -217,13 +293,41 @@ const ConversationsApp = () => {
 
   // Save navigation state to localStorage whenever it changes
   useEffect(() => {
+    // Don't save state while we're restoring it
+    if (isRestoringState) return;
+    
     const state = {
       currentView,
       selectedService,
       selectedConversation
     };
+    console.log('[Save] Saving state:', state.currentView);
     localStorage.setItem('conversationsAppState', JSON.stringify(state));
-  }, [currentView, selectedService, selectedConversation]);
+  }, [currentView, selectedService, selectedConversation, isRestoringState]);
+
+  // Save filter preferences to localStorage whenever they change
+  useEffect(() => {
+    const filters = {
+      conversationSearch,
+      messageSearch,
+      participantSearch,
+      conversationSortBy,
+      conversationSortOrder,
+      conversationStateFilter,
+      conversationDateFrom,
+      conversationDateTo
+    };
+    localStorage.setItem('conversationsAppFilters', JSON.stringify(filters));
+  }, [
+    conversationSearch,
+    messageSearch,
+    participantSearch,
+    conversationSortBy,
+    conversationSortOrder,
+    conversationStateFilter,
+    conversationDateFrom,
+    conversationDateTo
+  ]);
 
   const loadServicesData = async (forceRefresh = false) => {
     // Helper function that returns the data directly
@@ -307,9 +411,9 @@ const ConversationsApp = () => {
       const data = await apiClient.conversations.listServiceConversations(selectedService.sid);
       console.log('[LoadConversations] Fetched', data?.length, 'conversations');
       
-      // Fetch participant counts for each conversation
-      console.log('[LoadConversations] Fetching participant counts...');
-      const conversationsWithCounts = await Promise.all(
+      // Fetch participant data for each conversation (for filtering)
+      console.log('[LoadConversations] Fetching participant data...');
+      const conversationsWithParticipants = await Promise.all(
         data.map(async (conversation) => {
           try {
             const participants = await apiClient.conversations.listServiceParticipants(
@@ -318,23 +422,25 @@ const ConversationsApp = () => {
             );
             return {
               ...conversation,
-              participantsCount: participants.length
+              participantsCount: participants.length,
+              participants: participants // Store participant data for filtering
             };
           } catch (err) {
-            // If we can't get participants, just return the conversation without count
+            // If we can't get participants, just return the conversation without data
             return {
               ...conversation,
-              participantsCount: 0
+              participantsCount: 0,
+              participants: []
             };
           }
         })
       );
       
-      setConversations(conversationsWithCounts);
-      console.log('[LoadConversations] Complete with participant counts');
+      setConversations(conversationsWithParticipants);
+      console.log('[LoadConversations] Complete with participant data');
       
       // Cache the result
-      localStorage.setItem(cacheKey, JSON.stringify({ data: conversationsWithCounts, timestamp: Date.now() }));
+      localStorage.setItem(cacheKey, JSON.stringify({ data: conversationsWithParticipants, timestamp: Date.now() }));
     } catch (err) {
       setError('Failed to load conversations: ' + err.message);
     } finally {
@@ -938,12 +1044,12 @@ const ConversationsApp = () => {
               <div>
                 <button 
                   className="btn btn-secondary"
-                  onClick={() => {
-                    setSelectedService(null);
-                    setCurrentView('services');
-                  }}
-                >
-                  ← Back to Services
+                onClick={() => {
+                  setSelectedService(null);
+                  setCurrentView('services');
+                }}
+              >
+                  Back to Services
                 </button>
                 <h2 style={{ display: 'inline-block', marginLeft: '20px' }}>
                   {selectedService.friendlyName || selectedService.sid} - Conversations
@@ -955,16 +1061,55 @@ const ConversationsApp = () => {
             </div>
             
             <div className="card" style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div className="form-group" style={{ flex: '1', minWidth: '200px', margin: 0 }}>
+              <h3 style={{ marginTop: 0, marginBottom: '15px' }}>Search & Filters</h3>
+              
+              {/* Search input */}
+              <div style={{ marginBottom: '15px' }}>
+                <input
+                  type="text"
+                  placeholder="Search conversations (name, unique name, attributes, participants)..."
+                  value={conversationSearch}
+                  onChange={(e) => setConversationSearch(e.target.value)}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              
+              {/* Filters row */}
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '15px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '0.85em', marginBottom: '5px', display: 'block' }}>State</label>
+                  <select 
+                    value={conversationStateFilter} 
+                    onChange={(e) => setConversationStateFilter(e.target.value)}
+                  >
+                    <option value="all">All States</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </div>
+                
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '0.85em', marginBottom: '5px', display: 'block' }}>From Date</label>
                   <input
-                    type="text"
-                    placeholder="Search conversations (name, unique name, attributes)..."
-                    value={conversationSearch}
-                    onChange={(e) => setConversationSearch(e.target.value)}
-                    style={{ width: '100%' }}
+                    type="date"
+                    value={conversationDateFrom}
+                    onChange={(e) => setConversationDateFrom(e.target.value)}
                   />
                 </div>
+                
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '0.85em', marginBottom: '5px', display: 'block' }}>To Date</label>
+                  <input
+                    type="date"
+                    value={conversationDateTo}
+                    onChange={(e) => setConversationDateTo(e.target.value)}
+                  />
+                </div>
+              </div>
+              
+              {/* Sort controls */}
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div className="form-group" style={{ margin: 0 }}>
                   <select value={conversationSortBy} onChange={(e) => setConversationSortBy(e.target.value)}>
                     <option value="dateCreated">Sort by: Date</option>
@@ -979,9 +1124,17 @@ const ConversationsApp = () => {
                 >
                   {conversationSortOrder === 'asc' ? '↑ Ascending' : '↓ Descending'}
                 </button>
-                {conversationSearch && (
-                  <button className="btn btn-sm btn-secondary" onClick={() => setConversationSearch('')}>
-                    Clear Search
+                {(conversationSearch || conversationStateFilter !== 'all' || conversationDateFrom || conversationDateTo) && (
+                  <button 
+                    className="btn btn-sm btn-secondary" 
+                    onClick={() => {
+                      setConversationSearch('');
+                      setConversationStateFilter('all');
+                      setConversationDateFrom('');
+                      setConversationDateTo('');
+                    }}
+                  >
+                    Clear All Filters
                   </button>
                 )}
               </div>
@@ -1087,7 +1240,7 @@ const ConversationsApp = () => {
                   setCurrentView('conversations');
                 }}
               >
-                ← Back to Conversations
+                Back to Conversations
               </button>
               <div>
                 <button className="btn btn-primary" onClick={() => setShowExportModal(true)}>

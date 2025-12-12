@@ -34,7 +34,7 @@ function loadCredentials() {
 function saveCredentials(credentials) {
   try {
     fs.writeFileSync(CREDS_FILE, JSON.stringify(credentials, null, 2));
-    console.log('✓ Credentials saved successfully');
+    console.log('Credentials saved successfully');
     return true;
   } catch (error) {
     console.error('Error saving credentials:', error);
@@ -55,12 +55,12 @@ const validateCredentials = (req, res, next) => {
   try {
     // Support both Auth Token and API Key authentication
     if (credentials.apiKey && credentials.apiSecret) {
-      console.log('✓ Using API Key authentication');
+      console.log('Using API Key authentication');
       req.twilioClient = twilio(credentials.apiKey, credentials.apiSecret, { 
         accountSid: credentials.accountSid 
       });
     } else if (credentials.authToken) {
-      console.log('✓ Using Auth Token authentication');
+      console.log('Using Auth Token authentication');
       req.twilioClient = twilio(credentials.accountSid, credentials.authToken);
     } else {
       return res.status(401).json({ 

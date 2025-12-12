@@ -2,11 +2,11 @@
 
 A complete, standalone application for managing Twilio Conversations with integrated Conversational Intelligence Export functionality.
 
-## 🎯 Key Feature: Proper Export Implementation
+## Key Feature: Proper Export Implementation
 
 This app correctly implements the `/Export` endpoint from the **Twilio Conversations API** (not Voice API), ensuring that conversation messages (chat, WhatsApp, SMS) are exported to Intelligence Services, NOT voice call transcriptions.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Install Dependencies
 
@@ -46,28 +46,28 @@ Client runs on `http://localhost:5173`
 2. Enter your Twilio Account SID and Auth Token
 3. Start managing conversations!
 
-## 📋 Features
+## Features
 
-- ✅ **Full CRUD for All Resources**:
+- **Full CRUD for All Resources**:
   - Conversation Services (Create, Read, Update, Delete)
   - Conversations (Create, Read, Update, Delete)
   - Messages (Create, Read, Update, Delete)
   - Participants (Create, Read, Delete)
   - Webhooks (Create, Read, Update, Delete)
-- ✅ **Export to Intelligence** - The key feature using Conversations API `/Export`
-- ✅ **Operator Results Viewing** - View AI analysis (summaries, classifications, extractions)
-- ✅ **Clean, Modern UI** - Easy to use interface
-- ✅ **Server-side Credentials** - Secure credential management
+- **Export to Intelligence** - The key feature using Conversations API `/Export`
+- **Operator Results Viewing** - View AI analysis (summaries, classifications, extractions)
+- **Clean, Modern UI** - Easy to use interface
+- **Server-side Credentials** - Secure credential management
 
-## 🔑 The Export Fix
+## The Export Fix
 
 ### What Makes This Different?
 
 The `/Export` endpoint is **part of the Conversations API** and exports:
-- ✅ Chat conversations
-- ✅ WhatsApp messages
-- ✅ SMS via Conversations API
-- ❌ NOT Voice call transcriptions
+- Chat conversations
+- WhatsApp messages
+- SMS via Conversations API
+- NOT Voice call transcriptions
 
 ### How It Works
 
@@ -78,34 +78,34 @@ The `/Export` endpoint is **part of the Conversations API** and exports:
 5. Export creates a transcript of your **conversation messages**
 6. View the transcript automatically
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 Conversations-App/
-├── server/                    # Backend Express server
-│   ├── index.js              # Main server file with all endpoints
-│   ├── package.json
-│   ├── .env
-│   └── test-export-endpoint.js
-├── client/                    # React frontend
-│   ├── src/
-│   │   ├── pages/
-│   │   │   └── ConversationsApp.jsx
-│   │   ├── components/
-│   │   │   └── auth/
-│   │   │       └── RequireCredentials.jsx
-│   │   ├── services/
-│   │   │   └── apiClient.js
-│   │   ├── styles/
-│   │   │   └── ConversationsApp.css
-│   │   └── main.jsx
-│   ├── index.html
-│   ├── vite.config.js
-│   └── package.json
-└── README.md                  # This file
+  server/                    # Backend Express server
+    index.js                # Main server file with all endpoints
+    package.json
+    .env
+    test-export-endpoint.js
+  client/                    # React frontend
+    src/
+      pages/
+        ConversationsApp.jsx
+      components/
+        auth/
+          RequireCredentials.jsx
+      services/
+        apiClient.js
+      styles/
+        ConversationsApp.css
+      main.jsx
+    index.html
+    vite.config.js
+    package.json
+  README.md                  # This file
 ```
 
-## 🔧 API Endpoints
+## API Endpoints
 
 ### Complete API Reference
 
@@ -143,7 +143,7 @@ For the full API documentation including all CRUD operations, see **[API_REFEREN
 - Get transcripts
 - Get operator results (AI analysis: summaries, classifications, extractions)
 
-## 🧪 Testing
+## Testing
 
 Run the test script to verify the export endpoint:
 
@@ -159,7 +159,7 @@ This will:
 4. Test the export endpoint
 5. Confirm transcript creation
 
-## 📖 Usage Guide
+## Usage Guide
 
 ### Creating Your First Conversation
 
@@ -176,14 +176,14 @@ This will:
 4. **Click "Export"**
 5. **View Transcript**: The transcript will appear automatically after 2-3 seconds
 
-## 🔐 Security Notes
+## Security Notes
 
 - Credentials are stored server-side in `.credentials.json`
 - Never commit `.credentials.json` to version control
 - Use environment variables or secret managers in production
 - The `.gitignore` file is configured to exclude sensitive files
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Export Not Working
 - Ensure you have messages in the conversation
@@ -199,19 +199,19 @@ This will:
 - Check transcript status via Intelligence API
 - Ensure messages exist in the conversation
 
-## 📚 Additional Documentation
+## Additional Documentation
 
 - **[API_REFERENCE.md](API_REFERENCE.md)** - Complete API documentation with all CRUD endpoints
 - **[QUICK_START.md](QUICK_START.md)** - Detailed setup instructions
 - **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Technical details and architecture
 
-## 🔗 Twilio Documentation
+## Twilio Documentation
 
 - [Conversations API](https://www.twilio.com/docs/conversations)
 - [Export Endpoint](https://www.twilio.com/docs/conversations/api/conversation-resource#export-a-conversation)
 - [Intelligence API](https://www.twilio.com/docs/intelligence)
 
-## 💡 Key Takeaway
+## Key Takeaway
 
 **The `/Export` endpoint is part of the Conversations API**, not the Voice API. It's specifically designed for exporting text-based conversations (chat, WhatsApp, SMS) to Intelligence Services for analysis.
 

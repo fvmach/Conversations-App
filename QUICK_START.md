@@ -47,7 +47,7 @@ You should see:
 ```
 VITE v5.x.x ready in xxx ms
 
-➜  Local:   http://localhost:5173/
+Local: http://localhost:5173/
 ```
 
 ## Step 4: Configure Credentials (1 minute)
@@ -81,9 +81,9 @@ VITE v5.x.x ready in xxx ms
 
 ## Step 6: Export to Intelligence (1 minute)
 
-1. While viewing your conversation, click "📥 Export to Intelligence"
+1. While viewing your conversation, click "Export to Intelligence"
 2. Select an Intelligence Service from the dropdown
-3. Click "📥 Export"
+3. Click "Export"
 4. Wait 2-3 seconds
 5. The transcript will appear automatically!
 
@@ -101,7 +101,7 @@ You now have a fully functional Conversations App with Intelligence Export.
 ## Troubleshooting
 
 ### "No Intelligence Services found"
-- Go to Twilio Console → Intelligence
+- Go to Twilio Console -> Intelligence
 - Create a new Intelligence Service
 - Refresh the app and try again
 

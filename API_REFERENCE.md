@@ -288,12 +288,12 @@ await apiClient.intelligence.getOperatorResults(transcriptSid)
 
 | Resource | List | Get | Create | Update | Delete |
 |----------|------|-----|--------|--------|--------|
-| Services | ✓ | - | ✓ | ✓ | ✓ |
-| Conversations | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Messages | ✓ | - | ✓ | ✓ | ✓ |
-| Participants | ✓ | - | ✓ | - | ✓ |
-| Webhooks | ✓ | - | ✓ | ✓ | ✓ |
-| Intelligence | ✓ | ✓ | Export | - | - |
+| Services | Yes | No | Yes | Yes | Yes |
+| Conversations | Yes | Yes | Yes | Yes | Yes |
+| Messages | Yes | No | Yes | Yes | Yes |
+| Participants | Yes | No | Yes | No | Yes |
+| Webhooks | Yes | No | Yes | Yes | Yes |
+| Intelligence | Yes | Yes | Export | No | No |
 
 ---
 
