@@ -916,6 +916,41 @@ const ConversationsApp = () => {
     }
   };
 
+  const handleArchiveAll = async () => {
+    const filtered = filterConversations(conversations);
+    const sorted = sortConversations(filtered);
+    const activeConversations = sorted.filter(c => c.state === 'active');
+    
+    if (activeConversations.length === 0) {
+      setError('No active conversations to archive');
+      return;
+    }
+    
+    if (!confirm(`Are you sure you want to archive all ${activeConversations.length} active conversations?`)) {
+      return;
+    }
+    
+    setLoading(true);
+    setError('');
+    try {
+      const conversationSids = activeConversations.map(c => c.sid);
+      const result = await apiClient.conversations.bulkArchiveConversations(selectedService.sid, conversationSids);
+      
+      if (result.failed > 0) {
+        setSuccess(`Archived ${result.archived} conversations. ${result.failed} failed.`);
+      } else {
+        setSuccess(`Successfully archived ${result.archived} conversations`);
+      }
+      
+      invalidateCache(`conversations_${selectedService.sid}`);
+      loadConversations(true);
+    } catch (err) {
+      setError('Failed to archive conversations: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleViewOperatorResults = async (conversationSid, serviceSid) => {
     setLoadingOperatorResults(true);
     setViewingOperatorResults(null);
@@ -1152,9 +1187,21 @@ const ConversationsApp = () => {
                 <div className="empty-state">No conversations match your search.</div>
               ) : (
                 <>
-                  <p style={{ color: '#666', marginBottom: '10px' }}>
-                    Showing {sorted.length} of {conversations.length} conversations
-                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <p style={{ color: '#666', margin: 0 }}>
+                      Showing {sorted.length} of {conversations.length} conversations
+                    </p>
+                    {sorted.filter(c => c.state === 'active').length > 0 && (
+                      <button 
+                        className="btn btn-sm"
+                        style={{ backgroundColor: '#FF9800', color: 'white' }}
+                        onClick={handleArchiveAll}
+                        disabled={loading}
+                      >
+                        Archive All ({sorted.filter(c => c.state === 'active').length} Active)
+                      </button>
+                    )}
+                  </div>
                   <table className="data-table">
                     <thead>
                       <tr>
@@ -1307,7 +1354,7 @@ const ConversationsApp = () => {
                         <div>
                           {Object.entries(result.extractionResults).map(([key, value]) => (
                             <p key={key} style={{ margin: '5px 0' }}>
-                              <strong>{key}:</strong> {JSON.stringify(value)}
+                              <strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
                             </p>
                           ))}
                         </div>

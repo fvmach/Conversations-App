@@ -119,6 +119,10 @@ class ApiClient {
     deleteServiceConversation: (serviceSid, conversationSid) => this.request(`/api/twilio/conversations/services/${serviceSid}/conversations/${conversationSid}`, {
       method: 'DELETE',
     }),
+    bulkArchiveConversations: (serviceSid, conversationSids) => this.request(`/api/twilio/conversations/services/${serviceSid}/conversations/bulk-archive`, {
+      method: 'POST',
+      body: JSON.stringify({ conversationSids }),
+    }),
     
     // Service-scoped messages
     listServiceMessages: (serviceSid, conversationSid) => this.request(`/api/twilio/conversations/services/${serviceSid}/conversations/${conversationSid}/messages`, { method: 'GET' }),

@@ -2,9 +2,9 @@
 
 A complete, standalone application for managing Twilio Conversations with integrated Conversational Intelligence Export functionality.
 
-## Key Feature: Proper Export Implementation
+## Key Feature: Export Conversations
 
-This app correctly implements the `/Export` endpoint from the **Twilio Conversations API** (not Voice API), ensuring that conversation messages (chat, WhatsApp, SMS) are exported to Intelligence Services, NOT voice call transcriptions.
+This app implements the `/Export` endpoint from the **Twilio Conversations API**, ensuring that messaging conversations (chat, WhatsApp, SMS, email) are exported to Twilio Conversational Intelligence Services.
 
 ## Quick Start
 
@@ -67,7 +67,7 @@ The `/Export` endpoint is **part of the Conversations API** and exports:
 - Chat conversations
 - WhatsApp messages
 - SMS via Conversations API
-- NOT Voice call transcriptions
+- Email thread conversations
 
 ### How It Works
 

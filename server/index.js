@@ -162,10 +162,18 @@ app.delete('/api/twilio/conversations/services/:sid', validateCredentials, async
   }
 });
 
-// Service-scoped conversations
+// Service-scoped conversations with pagination support
 app.get('/api/twilio/conversations/services/:serviceSid/conversations', validateCredentials, async (req, res) => {
   try {
-    const conversations = await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations.list();
+    const { pageSize, page } = req.query;
+    const options = {};
+    
+    // Add pagination parameters if provided
+    if (pageSize) {
+      options.pageSize = parseInt(pageSize, 10);
+    }
+    
+    const conversations = await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations.list(options);
     res.json(conversations);
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
@@ -203,6 +211,67 @@ app.delete('/api/twilio/conversations/services/:serviceSid/conversations/:conver
   try {
     await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations(req.params.conversationSid).remove();
     res.json({ success: true });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// Bulk archive conversations
+app.post('/api/twilio/conversations/services/:serviceSid/conversations/bulk-archive', validateCredentials, async (req, res) => {
+  try {
+    const { conversationSids } = req.body;
+    
+    if (!conversationSids || !Array.isArray(conversationSids) || conversationSids.length === 0) {
+      return res.status(400).json({ error: 'conversationSids array is required and must not be empty' });
+    }
+    
+    console.log(`[Bulk Archive] Archiving ${conversationSids.length} conversations`);
+    
+    const results = {
+      successful: [],
+      failed: []
+    };
+    
+    // Archive conversations in parallel with Promise.allSettled for better error handling
+    const promises = conversationSids.map(async (conversationSid) => {
+      try {
+        await req.twilioClient.conversations.v1.services(req.params.serviceSid)
+          .conversations(conversationSid)
+          .update({ state: 'inactive' });
+        return { success: true, sid: conversationSid };
+      } catch (error) {
+        return { success: false, sid: conversationSid, error: error.message };
+      }
+    });
+    
+    const responses = await Promise.allSettled(promises);
+    
+    responses.forEach((response, index) => {
+      if (response.status === 'fulfilled') {
+        if (response.value.success) {
+          results.successful.push(response.value.sid);
+        } else {
+          results.failed.push({
+            sid: response.value.sid,
+            error: response.value.error
+          });
+        }
+      } else {
+        results.failed.push({
+          sid: conversationSids[index],
+          error: response.reason?.message || 'Unknown error'
+        });
+      }
+    });
+    
+    console.log(`[Bulk Archive] Results: ${results.successful.length} successful, ${results.failed.length} failed`);
+    
+    res.json({
+      success: true,
+      archived: results.successful.length,
+      failed: results.failed.length,
+      details: results
+    });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }
