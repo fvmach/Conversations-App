@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import RequireCredentials from '../components/auth/RequireCredentials';
+import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../services/apiClient';
 import '../styles/ConversationsApp.css';
 
@@ -993,15 +993,117 @@ const ConversationsApp = () => {
     }
   };
 
+  const { user, organization, logout } = useAuth();
+
+  const handleLogout = async () => {
+    if (confirm('Are you sure you want to log out?')) {
+      await logout();
+    }
+  };
+
   return (
-    <RequireCredentials>
-      <div className="conversations-app">
-        <header className="app-header">
+    <div className="conversations-app">
+      <header className="app-header">
+        <div>
           <h1>Conversations App</h1>
           <p>Manage Conversations and export to Conversational Intelligence</p>
-        </header>
+        </div>
+      </header>
 
-        {error && <div className="alert alert-error">{error}</div>}
+      {/* User info bar */}
+      <div style={{
+        backgroundColor: '#f5f5f5',
+        borderBottom: '1px solid #e0e0e0',
+        padding: '12px 40px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            backgroundColor: '#6C5CE7',
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 'bold',
+            fontSize: '14px'
+          }}>
+            {(user?.name || user?.email_address || 'U').charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: '500' }}>
+              {user?.name || user?.email_address}
+            </div>
+            <div style={{ fontSize: '12px', color: '#666' }}>
+              {organization?.organization_name}
+            </div>
+          </div>
+        </div>
+        <button 
+          className="btn btn-secondary"
+          onClick={handleLogout}
+          style={{ padding: '6px 16px', fontSize: '14px' }}
+        >
+          Logout
+        </button>
+      </div>
+
+      {/* Breadcrumb navigation */}
+      <div style={{
+        backgroundColor: 'white',
+        borderBottom: '1px solid #e0e0e0',
+        padding: '12px 40px',
+        fontSize: '14px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#666' }}>
+          <span 
+            onClick={() => setCurrentView('services')}
+            style={{ 
+              cursor: 'pointer', 
+              color: currentView === 'services' ? '#0263E0' : '#666',
+              fontWeight: currentView === 'services' ? '500' : 'normal',
+              textDecoration: currentView === 'services' ? 'none' : 'none'
+            }}
+            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+          >
+            Services
+          </span>
+          
+          {(currentView === 'conversations' || currentView === 'conversation-detail') && selectedService && (
+            <>
+              <span style={{ color: '#ccc' }}>/</span>
+              <span 
+                onClick={() => setCurrentView('conversations')}
+                style={{ 
+                  cursor: 'pointer',
+                  color: currentView === 'conversations' ? '#0263E0' : '#666',
+                  fontWeight: currentView === 'conversations' ? '500' : 'normal'
+                }}
+                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+              >
+                {selectedService.friendlyName || selectedService.sid}
+              </span>
+            </>
+          )}
+          
+          {currentView === 'conversation-detail' && selectedConversation && (
+            <>
+              <span style={{ color: '#ccc' }}>/</span>
+              <span style={{ color: '#0263E0', fontWeight: '500' }}>
+                {selectedConversation.friendlyName || selectedConversation.sid}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
         {exportResult && (
           <div className="alert alert-success">
@@ -1833,8 +1935,7 @@ const ConversationsApp = () => {
           </div>
         )}
 
-      </div>
-    </RequireCredentials>
+    </div>
   );
 };
 

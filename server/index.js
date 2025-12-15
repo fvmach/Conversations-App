@@ -5,13 +5,37 @@ const twilio = require('twilio');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const session = require('express-session');
+const stytch = require('stytch');
+const stytchAuth = require('./middleware/stytchAuth');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// Initialize Stytch B2B Client
+const stytchClient = new stytch.B2BClient({
+  project_id: process.env.STYTCH_PROJECT_ID,
+  secret: process.env.STYTCH_SECRET,
+});
+
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  credentials: true
+}));
 app.use(express.json());
 
 // Store credentials in a file (in production, use a secure secret manager)
@@ -76,6 +100,235 @@ const validateCredentials = (req, res, next) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+// ===== STYTCH AUTHENTICATION ROUTES =====
+
+// Send magic link for login (Discovery flow)
+app.post('/auth/login', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    
+    console.log('[Stytch Login] Sending magic link to:', email);
+    
+    const response = await stytchClient.magicLinks.email.discovery.send({
+      email_address: email,
+      discovery_redirect_url: process.env.DISCOVERY_REDIRECT_URL || 'http://localhost:5173/auth/callback'
+    });
+    
+    res.json({ 
+      success: true,
+      message: 'Magic link sent! Check your email.',
+      requestId: response.request_id
+    });
+  } catch (error) {
+    console.error('[Stytch Login] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Handle magic link authentication callback
+app.get('/auth/authenticate', async (req, res) => {
+  try {
+    const token = req.query.token;
+    const tokenType = req.query.stytch_token_type;
+    
+    console.log('[Stytch Auth] Token type:', tokenType);
+    
+    if (tokenType !== 'discovery') {
+      return res.status(400).json({ error: `Unrecognized token type: ${tokenType}` });
+    }
+    
+    // Authenticate the discovery magic link token
+    const authResp = await stytchClient.magicLinks.discovery.authenticate({
+      discovery_magic_links_token: token,
+    });
+    
+    if (authResp.status_code !== 200) {
+      console.error('[Stytch Auth] Authentication failed');
+      return res.status(500).json({ error: 'Authentication failed' });
+    }
+    
+    console.log('[Stytch Auth] Authentication successful');
+    console.log('[Stytch Auth] Member:', authResp.member.email_address);
+    console.log('[Stytch Auth] Discovered orgs:', authResp.discovered_organizations.length);
+    
+    const ist = authResp.intermediate_session_token;
+    
+    // If user has existing organizations, log into the first one
+    if (authResp.discovered_organizations.length > 0) {
+      const orgId = authResp.discovered_organizations[0].organization.organization_id;
+      console.log('[Stytch Auth] Logging into existing org:', orgId);
+      
+      const exchangeResp = await stytchClient.discovery.intermediateSessions.exchange({
+        intermediate_session_token: ist,
+        organization_id: orgId,
+      });
+      
+      if (exchangeResp.status_code !== 200) {
+        console.error('[Stytch Auth] Error exchanging IST:', exchangeResp);
+        return res.status(500).json({ error: 'Failed to join organization' });
+      }
+      
+      // Store session
+      req.session.stytchSessionToken = exchangeResp.session_token;
+      req.session.member = exchangeResp.member;
+      req.session.organization = exchangeResp.organization;
+      
+      console.log('[Stytch Auth] Session created for existing org');
+      
+      return res.json({
+        success: true,
+        member: exchangeResp.member,
+        organization: exchangeResp.organization
+      });
+    }
+    
+    // Create new organization if user doesn't belong to any
+    console.log('[Stytch Auth] Creating new organization');
+    
+    const createResp = await stytchClient.discovery.organizations.create({
+      intermediate_session_token: ist,
+      organization_name: `${authResp.member.email_address.split('@')[0]}'s Organization`,
+      email_allowed_domains: [authResp.member.email_address.split('@')[1]]
+    });
+    
+    if (createResp.status_code !== 200) {
+      console.error('[Stytch Auth] Error creating organization:', createResp);
+      return res.status(500).json({ error: 'Failed to create organization' });
+    }
+    
+    // Store session
+    req.session.stytchSessionToken = createResp.session_token;
+    req.session.member = createResp.member;
+    req.session.organization = createResp.organization;
+    
+    console.log('[Stytch Auth] Session created for new org');
+    
+    res.json({
+      success: true,
+      member: createResp.member,
+      organization: createResp.organization
+    });
+  } catch (error) {
+    console.error('[Stytch Auth] Authentication error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Check current session status
+app.get('/auth/session', async (req, res) => {
+  const sessionToken = req.session.stytchSessionToken;
+  
+  if (!sessionToken) {
+    return res.json({ authenticated: false });
+  }
+  
+  // TEMPORARY: Handle admin bypass (REMOVE IN PRODUCTION)
+  if (sessionToken === 'admin-bypass-token') {
+    return res.json({
+      authenticated: true,
+      member: req.session.member,
+      organization: req.session.organization
+    });
+  }
+  
+  try {
+    const response = await stytchClient.sessions.authenticate({
+      session_token: sessionToken
+    });
+    
+    if (response.status_code !== 200) {
+      req.session.stytchSessionToken = undefined;
+      return res.json({ authenticated: false });
+    }
+    
+    // Update session with fresh token
+    req.session.stytchSessionToken = response.session_token;
+    
+    res.json({
+      authenticated: true,
+      member: response.member,
+      organization: response.organization
+    });
+  } catch (error) {
+    console.error('[Stytch Session] Error:', error);
+    req.session.stytchSessionToken = undefined;
+    res.json({ authenticated: false });
+  }
+});
+
+// Logout - revoke session
+app.post('/auth/logout', async (req, res) => {
+  const sessionToken = req.session.stytchSessionToken;
+  
+  if (!sessionToken) {
+    return res.json({ success: true, message: 'No active session' });
+  }
+  
+  try {
+    const member = req.session.member;
+    
+    await stytchClient.sessions.revoke({
+      member_id: member.member_id,
+    }, {
+      authorization: {
+        session_token: sessionToken
+      }
+    });
+    
+    // Clear session
+    req.session.stytchSessionToken = undefined;
+    req.session.member = undefined;
+    req.session.organization = undefined;
+    
+    res.json({ success: true, message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('[Stytch Logout] Error:', error);
+    
+    // Clear session anyway
+    req.session.stytchSessionToken = undefined;
+    req.session.member = undefined;
+    req.session.organization = undefined;
+    
+    res.json({ success: true, message: 'Session cleared' });
+  }
+});
+
+// Get current member information
+app.get('/auth/member', stytchAuth(stytchClient), (req, res) => {
+  res.json({
+    member: req.stytchMember,
+    organization: req.stytchOrganization
+  });
+});
+
+// TEMPORARY: Admin bypass for testing (REMOVE IN PRODUCTION)
+app.post('/auth/admin-bypass', (req, res) => {
+  console.log('[Admin Bypass] Creating temporary admin session');
+  
+  // Create a fake admin session
+  req.session.stytchSessionToken = 'admin-bypass-token';
+  req.session.member = {
+    member_id: 'admin-bypass',
+    email_address: 'admin@test.local',
+    name: 'Admin (Bypass)'
+  };
+  req.session.organization = {
+    organization_id: 'admin-org',
+    organization_name: 'Admin Organization (Bypass)'
+  };
+  
+  res.json({
+    success: true,
+    member: req.session.member,
+    organization: req.session.organization,
+    message: 'Admin bypass activated - for testing only'
+  });
 });
 
 // Credentials management endpoints
@@ -180,43 +433,7 @@ app.get('/api/twilio/conversations/services/:serviceSid/conversations', validate
   }
 });
 
-app.post('/api/twilio/conversations/services/:serviceSid/conversations', validateCredentials, async (req, res) => {
-  try {
-    const conversation = await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations.create(req.body);
-    res.json(conversation);
-  } catch (error) {
-    res.status(error.status || 500).json({ error: error.message });
-  }
-});
-
-app.get('/api/twilio/conversations/services/:serviceSid/conversations/:conversationSid', validateCredentials, async (req, res) => {
-  try {
-    const conversation = await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations(req.params.conversationSid).fetch();
-    res.json(conversation);
-  } catch (error) {
-    res.status(error.status || 500).json({ error: error.message });
-  }
-});
-
-app.post('/api/twilio/conversations/services/:serviceSid/conversations/:conversationSid', validateCredentials, async (req, res) => {
-  try {
-    const conversation = await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations(req.params.conversationSid).update(req.body);
-    res.json(conversation);
-  } catch (error) {
-    res.status(error.status || 500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/twilio/conversations/services/:serviceSid/conversations/:conversationSid', validateCredentials, async (req, res) => {
-  try {
-    await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations(req.params.conversationSid).remove();
-    res.json({ success: true });
-  } catch (error) {
-    res.status(error.status || 500).json({ error: error.message });
-  }
-});
-
-// Bulk archive conversations
+// Bulk archive conversations - MUST come before :conversationSid routes
 app.post('/api/twilio/conversations/services/:serviceSid/conversations/bulk-archive', validateCredentials, async (req, res) => {
   try {
     const { conversationSids } = req.body;
@@ -272,6 +489,42 @@ app.post('/api/twilio/conversations/services/:serviceSid/conversations/bulk-arch
       failed: results.failed.length,
       details: results
     });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.post('/api/twilio/conversations/services/:serviceSid/conversations', validateCredentials, async (req, res) => {
+  try {
+    const conversation = await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations.create(req.body);
+    res.json(conversation);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.get('/api/twilio/conversations/services/:serviceSid/conversations/:conversationSid', validateCredentials, async (req, res) => {
+  try {
+    const conversation = await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations(req.params.conversationSid).fetch();
+    res.json(conversation);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.post('/api/twilio/conversations/services/:serviceSid/conversations/:conversationSid', validateCredentials, async (req, res) => {
+  try {
+    const conversation = await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations(req.params.conversationSid).update(req.body);
+    res.json(conversation);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/twilio/conversations/services/:serviceSid/conversations/:conversationSid', validateCredentials, async (req, res) => {
+  try {
+    await req.twilioClient.conversations.v1.services(req.params.serviceSid).conversations(req.params.conversationSid).remove();
+    res.json({ success: true });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }

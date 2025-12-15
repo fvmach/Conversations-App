@@ -71,6 +71,18 @@ const RequireCredentials = ({ children }) => {
             {loading ? 'Saving...' : 'Save Credentials'}
           </button>
         </form>
+        
+        <div style={{ marginTop: '20px', padding: '15px', background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px' }}>
+          <p style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#856404' }}>
+            <strong>Development Mode:</strong> Skip authentication temporarily
+          </p>
+          <button
+            onClick={() => setHasCredentials(true)}
+            style={{ width: '100%', padding: '10px', background: '#ffc107', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            Skip Auth (Dev Only)
+          </button>
+        </div>
       </div>
     );
   }

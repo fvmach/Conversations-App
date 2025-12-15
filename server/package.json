@@ -8,7 +8,12 @@
     "dev": "node index.js",
     "test": "node test-export-endpoint.js"
   },
-  "keywords": ["twilio", "conversations", "intelligence", "export"],
+  "keywords": [
+    "twilio",
+    "conversations",
+    "intelligence",
+    "export"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -17,6 +22,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-session": "^1.18.2",
+    "stytch": "^12.43.1",
     "twilio": "^5.0.0"
   }
 }

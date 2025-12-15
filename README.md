@@ -1,14 +1,58 @@
 # Standalone Conversations App with Intelligence Export
 
-A complete, standalone application for managing Twilio Conversations with integrated Conversational Intelligence Export functionality.
+A complete, standalone application for managing Twilio Conversations with integrated Conversational Intelligence Export functionality and Stytch B2B authentication.
 
-## Key Feature: Export Conversations
+## Key Features
 
+### Export Conversations
 This app implements the `/Export` endpoint from the **Twilio Conversations API**, ensuring that messaging conversations (chat, WhatsApp, SMS, email) are exported to Twilio Conversational Intelligence Services.
+
+### Stytch B2B Authentication
+Secure user authentication using Stytch magic links with organization management.
+
+![Conversations App](Conversations-App-Image.png)
 
 ## Quick Start
 
-### 1. Install Dependencies
+### 1. Configure Stytch Authentication
+
+**Create a Stytch B2B Project:**
+1. Go to [Stytch Dashboard](https://stytch.com/dashboard)
+2. Create a new B2B project (or use an existing one)
+3. Navigate to **API Keys** to get your credentials
+4. Copy your **Project ID** and **Secret**
+5. In **Dashboard Settings**, configure:
+   - Enable **Frontend SDKs** in Test environment
+   - Add `http://localhost:5173` to **Authorized domains**
+   - Enable **Create organizations** toggle under Enabled methods
+6. In **Redirect URLs**, add: `http://localhost:5173/auth/callback`
+
+**Configure Backend (.env):**
+
+Create `server/.env` file:
+```bash
+PORT=3001
+
+# Stytch B2B Authentication
+STYTCH_PROJECT_ID=project-test-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+STYTCH_SECRET=secret-test-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Session Secret (generate a random string for production)
+SESSION_SECRET=your-random-session-secret-key
+
+# Optional: Customize redirect URL
+DISCOVERY_REDIRECT_URL=http://localhost:5173/auth/callback
+CLIENT_URL=http://localhost:5173
+```
+
+**Configure Frontend (.env):**
+
+Create `client/.env` file (optional, uses defaults):
+```bash
+VITE_API_URL=http://localhost:3001
+```
+
+### 2. Install Dependencies
 
 **Server:**
 ```bash
@@ -22,7 +66,7 @@ cd client
 npm install
 ```
 
-### 2. Start the Server
+### 3. Start the Server
 
 ```bash
 cd server
@@ -31,7 +75,7 @@ npm start
 
 Server runs on `http://localhost:3001`
 
-### 3. Start the Client
+### 4. Start the Client
 
 ```bash
 cd client
@@ -40,14 +84,25 @@ npm run dev
 
 Client runs on `http://localhost:5173`
 
-### 4. Access the App
+### 5. Access the App
 
 1. Open `http://localhost:5173` in your browser
-2. Enter your Twilio Account SID and Auth Token
-3. Start managing conversations!
+2. **Sign in with Stytch:**
+   - Enter your email address
+   - Click "Send Magic Link"
+   - Check your email and click the link
+   - You'll be redirected to the app, authenticated
+3. **Configure Twilio Credentials** (if prompted):
+   - Enter your Twilio Account SID and Auth Token
+4. Start managing conversations!
 
 ## Features
 
+- **Stytch B2B Authentication**:
+  - Magic link login (passwordless)
+  - Organization management
+  - Session-based security
+  - Automatic session refresh
 - **Full CRUD for All Resources**:
   - Conversation Services (Create, Read, Update, Delete)
   - Conversations (Create, Read, Update, Delete)
@@ -83,25 +138,33 @@ The `/Export` endpoint is **part of the Conversations API** and exports:
 ```
 Conversations-App/
   server/                    # Backend Express server
-    index.js                # Main server file with all endpoints
+    middleware/
+      stytchAuth.js         # Stytch session validation middleware
+    index.js                # Main server with Stytch auth & API endpoints
     package.json
-    .env
+    .env                    # Stytch credentials (not committed)
+    .env.example            # Template for environment variables
     test-export-endpoint.js
-  client/                    # React frontend
+  client/                    # React frontend with Vite
     src/
+      contexts/
+        AuthContext.jsx     # Auth state management
       pages/
-        ConversationsApp.jsx
+        ConversationsApp.jsx # Main app page
       components/
         auth/
-          RequireCredentials.jsx
+          StytchLogin.jsx   # Magic link login form
+          AuthCallback.jsx  # Magic link callback handler
+          ProtectedRoute.jsx # Route protection wrapper
       services/
-        apiClient.js
+        apiClient.js        # API client with credentials support
       styles/
         ConversationsApp.css
-      main.jsx
+      main.jsx              # App entry with routing
     index.html
     vite.config.js
     package.json
+    .env.example            # Template for frontend env vars
   README.md                  # This file
 ```
 
@@ -113,9 +176,16 @@ For the full API documentation including all CRUD operations, see **[API_REFEREN
 
 ### Key Endpoints Summary
 
+**Authentication (Stytch)**
+- `POST /auth/login` - Send magic link to email
+- `GET /auth/authenticate` - Handle magic link callback
+- `GET /auth/session` - Check current session status
+- `POST /auth/logout` - Revoke session and logout
+- `GET /auth/member` - Get current member info (protected)
+
 **Credentials**
-- `POST /api/credentials` - Save credentials
-- `GET /api/credentials/status` - Check status
+- `POST /api/credentials` - Save Twilio credentials
+- `GET /api/credentials/status` - Check credentials status
 - `DELETE /api/credentials` - Clear credentials
 
 **Conversation Services** (Full CRUD)
@@ -178,10 +248,26 @@ This will:
 
 ## Security Notes
 
-- Credentials are stored server-side in `.credentials.json`
-- Never commit `.credentials.json` to version control
-- Use environment variables or secret managers in production
+### Authentication
+- All routes protected by Stytch session validation
+- Magic link authentication (passwordless)
+- HTTP-only session cookies
+- Automatic session refresh
+- Organization-level access control
+
+### Credentials
+- Twilio credentials stored server-side in `.credentials.json`
+- Stytch secrets stored in `.env` (never exposed to frontend)
+- Session secrets use secure random strings
+- Never commit `.env` or `.credentials.json` to version control
 - The `.gitignore` file is configured to exclude sensitive files
+
+### Production Recommendations
+- Use HTTPS in production (`secure: true` for cookies)
+- Generate strong random session secrets
+- Use environment variables or secret managers
+- Configure proper CORS origins
+- Enable rate limiting for auth endpoints
 
 ## Troubleshooting
 
