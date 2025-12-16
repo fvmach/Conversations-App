@@ -415,6 +415,52 @@ app.delete('/api/twilio/conversations/services/:sid', validateCredentials, async
   }
 });
 
+// Service-level webhooks
+app.get('/api/twilio/conversations/services/:serviceSid/webhooks', validateCredentials, async (req, res) => {
+  try {
+    const webhooks = await req.twilioClient.conversations.v1.services(req.params.serviceSid).configuration().webhooks.list();
+    res.json(webhooks);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.post('/api/twilio/conversations/services/:serviceSid/webhooks', validateCredentials, async (req, res) => {
+  try {
+    const webhook = await req.twilioClient.conversations.v1.services(req.params.serviceSid).configuration().webhooks.create(req.body);
+    res.json(webhook);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.get('/api/twilio/conversations/services/:serviceSid/webhooks/:webhookSid', validateCredentials, async (req, res) => {
+  try {
+    const webhook = await req.twilioClient.conversations.v1.services(req.params.serviceSid).configuration().webhooks(req.params.webhookSid).fetch();
+    res.json(webhook);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.post('/api/twilio/conversations/services/:serviceSid/webhooks/:webhookSid', validateCredentials, async (req, res) => {
+  try {
+    const webhook = await req.twilioClient.conversations.v1.services(req.params.serviceSid).configuration().webhooks(req.params.webhookSid).update(req.body);
+    res.json(webhook);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/twilio/conversations/services/:serviceSid/webhooks/:webhookSid', validateCredentials, async (req, res) => {
+  try {
+    await req.twilioClient.conversations.v1.services(req.params.serviceSid).configuration().webhooks(req.params.webhookSid).remove();
+    res.json({ success: true });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
 // Service-scoped conversations with pagination support
 app.get('/api/twilio/conversations/services/:serviceSid/conversations', validateCredentials, async (req, res) => {
   try {
@@ -433,8 +479,8 @@ app.get('/api/twilio/conversations/services/:serviceSid/conversations', validate
   }
 });
 
-// Bulk archive conversations - MUST come before :conversationSid routes
-app.post('/api/twilio/conversations/services/:serviceSid/conversations/bulk-archive', validateCredentials, async (req, res) => {
+// Bulk close conversations - MUST come before :conversationSid routes
+app.post('/api/twilio/conversations/services/:serviceSid/conversations/bulk-close', validateCredentials, async (req, res) => {
   try {
     const { conversationSids } = req.body;
     
@@ -442,19 +488,19 @@ app.post('/api/twilio/conversations/services/:serviceSid/conversations/bulk-arch
       return res.status(400).json({ error: 'conversationSids array is required and must not be empty' });
     }
     
-    console.log(`[Bulk Archive] Archiving ${conversationSids.length} conversations`);
+    console.log(`[Bulk Close] Closing ${conversationSids.length} conversations`);
     
     const results = {
       successful: [],
       failed: []
     };
     
-    // Archive conversations in parallel with Promise.allSettled for better error handling
+    // Close conversations in parallel with Promise.allSettled for better error handling
     const promises = conversationSids.map(async (conversationSid) => {
       try {
         await req.twilioClient.conversations.v1.services(req.params.serviceSid)
           .conversations(conversationSid)
-          .update({ state: 'inactive' });
+          .update({ state: 'closed' });
         return { success: true, sid: conversationSid };
       } catch (error) {
         return { success: false, sid: conversationSid, error: error.message };
@@ -481,11 +527,11 @@ app.post('/api/twilio/conversations/services/:serviceSid/conversations/bulk-arch
       }
     });
     
-    console.log(`[Bulk Archive] Results: ${results.successful.length} successful, ${results.failed.length} failed`);
+    console.log(`[Bulk Close] Results: ${results.successful.length} successful, ${results.failed.length} failed`);
     
     res.json({
       success: true,
-      archived: results.successful.length,
+      closed: results.successful.length,
       failed: results.failed.length,
       details: results
     });

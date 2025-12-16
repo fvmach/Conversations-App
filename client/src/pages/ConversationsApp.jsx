@@ -3,6 +3,27 @@ import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../services/apiClient';
 import '../styles/ConversationsApp.css';
 
+// Twilio Conversations webhook event types
+const WEBHOOK_TYPES = [
+  { value: 'webhook', label: 'Webhook' },
+  { value: 'trigger', label: 'Trigger' },
+  { value: 'studio', label: 'Studio Flow' }
+];
+
+const WEBHOOK_EVENTS = [
+  'onMessageAdded',
+  'onMessageUpdated',
+  'onMessageRemoved',
+  'onConversationAdded',
+  'onConversationUpdated',
+  'onConversationRemoved',
+  'onConversationStateUpdated',
+  'onParticipantAdded',
+  'onParticipantUpdated',
+  'onParticipantRemoved',
+  'onDeliveryUpdated'
+];
+
 const ConversationsApp = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -41,6 +62,10 @@ const ConversationsApp = () => {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showOperatorResultsModal, setShowOperatorResultsModal] = useState(false);
   const [viewingOperatorResults, setViewingOperatorResults] = useState(null);
+  const [showParticipantDetailsModal, setShowParticipantDetailsModal] = useState(false);
+  const [viewingParticipant, setViewingParticipant] = useState(null);
+  const [showWebhookDetailsModal, setShowWebhookDetailsModal] = useState(false);
+  const [viewingWebhook, setViewingWebhook] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
   
   // Form states
@@ -48,6 +73,12 @@ const ConversationsApp = () => {
   const [conversationForm, setConversationForm] = useState({ friendlyName: '', uniqueName: '', attributes: '' });
   const [messageForm, setMessageForm] = useState({ author: '', body: '', attributes: '' });
   const [participantForm, setParticipantForm] = useState({ identity: '', attributes: '' });
+  const [webhookForm, setWebhookForm] = useState({ 
+    target: '', 
+    method: 'POST', 
+    filters: [],
+    type: 'webhook'
+  });
 
   // Helper to load filter preferences from localStorage
   const loadFilterPreferences = () => {
@@ -708,6 +739,11 @@ const ConversationsApp = () => {
     }
   };
 
+  const handleViewParticipant = (participant) => {
+    setViewingParticipant(participant);
+    setShowParticipantDetailsModal(true);
+  };
+
   const handleDeleteParticipant = async (participantSid) => {
     if (!confirm('Are you sure you want to remove this participant?')) {
       return;
@@ -725,6 +761,106 @@ const ConversationsApp = () => {
       loadConversationDetails(true);
     } catch (err) {
       setError('Failed to remove participant: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewWebhook = (webhook) => {
+    setViewingWebhook(webhook);
+    setShowWebhookDetailsModal(true);
+  };
+
+  const handleEditWebhook = (webhook) => {
+    setEditingItem(webhook);
+    setWebhookForm({
+      target: webhook.configuration?.url || webhook.target || '',
+      method: webhook.configuration?.method || webhook.method || 'POST',
+      filters: webhook.configuration?.filters || webhook.filters || [],
+      type: webhook.configuration?.type || webhook.type || 'webhook'
+    });
+    setShowWebhookModal(true);
+  };
+
+  const handleDeleteWebhook = async (webhookSid) => {
+    if (!confirm('Are you sure you want to delete this webhook?')) {
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await apiClient.conversations.deleteServiceWebhook(
+        selectedService.sid,
+        selectedConversation.sid,
+        webhookSid
+      );
+      setSuccess('Webhook deleted successfully');
+      invalidateCache(`conversation_details_${selectedConversation.sid}`);
+      loadConversationDetails(true);
+    } catch (err) {
+      setError('Failed to delete webhook: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateWebhook = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const webhookData = {
+        target: webhookForm.type,
+        'configuration.url': webhookForm.target,
+        'configuration.method': webhookForm.method
+      };
+      if (webhookForm.filters.length > 0) {
+        webhookData['configuration.filters'] = webhookForm.filters;
+      }
+      await apiClient.conversations.createServiceWebhook(
+        selectedService.sid,
+        selectedConversation.sid,
+        webhookData
+      );
+      setSuccess('Webhook created successfully');
+      setShowWebhookModal(false);
+      setWebhookForm({ target: '', method: 'POST', filters: [], type: 'webhook' });
+      invalidateCache(`conversation_details_${selectedConversation.sid}`);
+      loadConversationDetails(true);
+    } catch (err) {
+      setError('Failed to create webhook: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateWebhook = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const webhookData = {
+        target: webhookForm.type,
+        'configuration.url': webhookForm.target,
+        'configuration.method': webhookForm.method
+      };
+      if (webhookForm.filters.length > 0) {
+        webhookData['configuration.filters'] = webhookForm.filters;
+      }
+      await apiClient.conversations.updateServiceWebhook(
+        selectedService.sid,
+        selectedConversation.sid,
+        editingItem.sid,
+        webhookData
+      );
+      setSuccess('Webhook updated successfully');
+      setShowWebhookModal(false);
+      setEditingItem(null);
+      setWebhookForm({ target: '', method: 'POST', filters: [], type: 'webhook' });
+      invalidateCache(`conversation_details_${selectedConversation.sid}`);
+      loadConversationDetails(true);
+    } catch (err) {
+      setError('Failed to update webhook: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -891,61 +1027,104 @@ const ConversationsApp = () => {
     }
   };
 
-  const handleArchiveConversation = async (conversationSid, currentState) => {
-    if (currentState === 'closed') {
-      setError('Cannot activate a closed conversation. Closed conversations are permanently closed.');
-      return;
-    }
-    
-    const newState = currentState === 'active' ? 'inactive' : 'active';
+  const handlePauseConversation = async (conversationSid) => {
     setLoading(true);
     setError('');
     try {
       await apiClient.conversations.updateServiceConversation(
         selectedService.sid,
         conversationSid,
-        { state: newState }
+        { state: 'inactive' }
       );
-      setSuccess(`Conversation ${newState === 'inactive' ? 'archived' : 'activated'} successfully`);
+      setSuccess('Conversation paused successfully');
       invalidateCache(`conversations_${selectedService.sid}`);
       loadConversations(true);
     } catch (err) {
-      setError('Failed to update conversation state: ' + err.message);
+      setError('Failed to pause conversation: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleArchiveAll = async () => {
+  const handleActivateConversation = async (conversationSid) => {
+    setLoading(true);
+    setError('');
+    try {
+      await apiClient.conversations.updateServiceConversation(
+        selectedService.sid,
+        conversationSid,
+        { state: 'active' }
+      );
+      setSuccess('Conversation activated successfully');
+      invalidateCache(`conversations_${selectedService.sid}`);
+      loadConversations(true);
+    } catch (err) {
+      setError('Failed to activate conversation: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloseConversation = async (conversationSid) => {
+    if (!confirm('Are you sure you want to close this conversation? Closed conversations cannot be reopened.')) {
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await apiClient.conversations.updateServiceConversation(
+        selectedService.sid,
+        conversationSid,
+        { state: 'closed' }
+      );
+      setSuccess('Conversation closed successfully');
+      invalidateCache(`conversations_${selectedService.sid}`);
+      loadConversations(true);
+    } catch (err) {
+      setError('Failed to close conversation: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloseAll = async () => {
     const filtered = filterConversations(conversations);
     const sorted = sortConversations(filtered);
-    const activeConversations = sorted.filter(c => c.state === 'active');
+    const openConversations = sorted.filter(c => c.state !== 'closed');
     
-    if (activeConversations.length === 0) {
-      setError('No active conversations to archive');
+    if (openConversations.length === 0) {
+      setError('No open conversations to close');
       return;
     }
     
-    if (!confirm(`Are you sure you want to archive all ${activeConversations.length} active conversations?`)) {
+    const activeCount = openConversations.filter(c => c.state === 'active').length;
+    const inactiveCount = openConversations.filter(c => c.state === 'inactive').length;
+    const countText = activeCount > 0 && inactiveCount > 0 
+      ? `${activeCount} active and ${inactiveCount} inactive` 
+      : activeCount > 0 
+        ? `${activeCount} active`
+        : `${inactiveCount} inactive`;
+    
+    if (!confirm(`Are you sure you want to close all ${countText} conversations? Closed conversations cannot be reopened.`)) {
       return;
     }
     
     setLoading(true);
     setError('');
     try {
-      const conversationSids = activeConversations.map(c => c.sid);
-      const result = await apiClient.conversations.bulkArchiveConversations(selectedService.sid, conversationSids);
+      const conversationSids = openConversations.map(c => c.sid);
+      const result = await apiClient.conversations.bulkCloseConversations(selectedService.sid, conversationSids);
       
       if (result.failed > 0) {
-        setSuccess(`Archived ${result.archived} conversations. ${result.failed} failed.`);
+        setSuccess(`Closed ${result.closed} conversations. ${result.failed} failed.`);
       } else {
-        setSuccess(`Successfully archived ${result.archived} conversations`);
+        setSuccess(`Successfully closed ${result.closed} conversations`);
       }
       
       invalidateCache(`conversations_${selectedService.sid}`);
       loadConversations(true);
     } catch (err) {
-      setError('Failed to archive conversations: ' + err.message);
+      setError('Failed to close conversations: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -1192,9 +1371,22 @@ const ConversationsApp = () => {
                   {selectedService.friendlyName || selectedService.sid} - Conversations
                 </h2>
               </div>
-              <button className="btn btn-primary" onClick={() => setShowConversationModal(true)}>
-                Create Conversation
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => {
+                    invalidateCache(`conversations_${selectedService.sid}`);
+                    loadConversations(true);
+                  }}
+                  disabled={loading}
+                  title="Refresh conversations list"
+                >
+                  ↻ Refresh
+                </button>
+                <button className="btn btn-primary" onClick={() => setShowConversationModal(true)}>
+                  Create Conversation
+                </button>
+              </div>
             </div>
             
             <div className="card" style={{ marginBottom: '20px' }}>
@@ -1293,16 +1485,26 @@ const ConversationsApp = () => {
                     <p style={{ color: '#666', margin: 0 }}>
                       Showing {sorted.length} of {conversations.length} conversations
                     </p>
-                    {sorted.filter(c => c.state === 'active').length > 0 && (
-                      <button 
-                        className="btn btn-sm"
-                        style={{ backgroundColor: '#FF9800', color: 'white' }}
-                        onClick={handleArchiveAll}
-                        disabled={loading}
-                      >
-                        Archive All ({sorted.filter(c => c.state === 'active').length} Active)
-                      </button>
-                    )}
+                    {sorted.filter(c => c.state !== 'closed').length > 0 && (() => {
+                      const openConvs = sorted.filter(c => c.state !== 'closed');
+                      const activeCount = openConvs.filter(c => c.state === 'active').length;
+                      const inactiveCount = openConvs.filter(c => c.state === 'inactive').length;
+                      const label = activeCount > 0 && inactiveCount > 0
+                        ? `Close All (${activeCount} Active, ${inactiveCount} Inactive)`
+                        : activeCount > 0
+                          ? `Close All (${activeCount} Active)`
+                          : `Close All (${inactiveCount} Inactive)`;
+                      return (
+                        <button 
+                          className="btn btn-sm"
+                          style={{ backgroundColor: '#f44336', color: 'white' }}
+                          onClick={handleCloseAll}
+                          disabled={loading}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })()}
                   </div>
                   <table className="data-table">
                     <thead>
@@ -1351,13 +1553,31 @@ const ConversationsApp = () => {
                               View AI Results
                             </button>
                           )}
+                          {conversation.state === 'active' && (
+                            <button 
+                              className="btn btn-sm"
+                              style={{ backgroundColor: '#FF9800', color: 'white' }}
+                              onClick={() => handlePauseConversation(conversation.sid)}
+                            >
+                              Pause
+                            </button>
+                          )}
+                          {conversation.state === 'inactive' && (
+                            <button 
+                              className="btn btn-sm"
+                              style={{ backgroundColor: '#4CAF50', color: 'white' }}
+                              onClick={() => handleActivateConversation(conversation.sid)}
+                            >
+                              Activate
+                            </button>
+                          )}
                           {conversation.state !== 'closed' && (
                             <button 
                               className="btn btn-sm"
-                              style={{ backgroundColor: conversation.state === 'active' ? '#FF9800' : '#4CAF50', color: 'white' }}
-                              onClick={() => handleArchiveConversation(conversation.sid, conversation.state)}
+                              style={{ backgroundColor: '#f44336', color: 'white' }}
+                              onClick={() => handleCloseConversation(conversation.sid)}
                             >
-                              {conversation.state === 'active' ? 'Archive' : 'Activate'}
+                              Close
                             </button>
                           )}
                           <button 
@@ -1391,7 +1611,16 @@ const ConversationsApp = () => {
               >
                 Back to Conversations
               </button>
-              <div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {localStorage.getItem(`transcript_map_${selectedConversation.sid}`) && (
+                  <button 
+                    className="btn"
+                    style={{ backgroundColor: '#9C27B0', color: 'white' }}
+                    onClick={() => handleViewOperatorResults(selectedConversation.sid, selectedService.sid)}
+                  >
+                    View AI Results
+                  </button>
+                )}
                 <button className="btn btn-primary" onClick={() => setShowExportModal(true)}>
                   Export to Intelligence
                 </button>
@@ -1616,13 +1845,21 @@ const ConversationsApp = () => {
                             <td>{participant.messagingBinding?.address || '-'}</td>
                             <td>{new Date(participant.dateCreated).toLocaleString()}</td>
                             <td>
-                              <button 
-                                className="btn btn-sm"
-                                style={{ backgroundColor: '#f44336', color: 'white' }}
-                                onClick={() => handleDeleteParticipant(participant.sid)}
-                              >
-                                Remove
-                              </button>
+                              <div style={{ display: 'flex', gap: '5px' }}>
+                                <button 
+                                  className="btn btn-sm"
+                                  onClick={() => handleViewParticipant(participant)}
+                                >
+                                  View
+                                </button>
+                                <button 
+                                  className="btn btn-sm"
+                                  style={{ backgroundColor: '#f44336', color: 'white' }}
+                                  onClick={() => handleDeleteParticipant(participant.sid)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1631,6 +1868,65 @@ const ConversationsApp = () => {
                   </>
                 );
               })()}
+            </div>
+            
+            <div className="tabs" style={{ marginTop: '30px' }}>
+              <div className="tab-header">
+                <h3>Webhooks ({webhooks.length})</h3>
+                <button className="btn btn-primary" onClick={() => setShowWebhookModal(true)}>
+                  Add Webhook
+                </button>
+              </div>
+              
+              {webhooks.length === 0 ? (
+                <div className="empty-state">No webhooks configured yet.</div>
+              ) : (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Target</th>
+                      <th>Method</th>
+                      <th>Filters</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {webhooks.map((webhook) => (
+                      <tr key={webhook.sid}>
+                        <td><code>{webhook.configuration?.url || webhook.target}</code></td>
+                        <td>{webhook.configuration?.method || webhook.method || 'POST'}</td>
+                        <td>{(() => {
+                          const filters = webhook.configuration?.filters || webhook.filters;
+                          return filters?.length > 0 ? filters.join(', ') : 'All events';
+                        })()}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '5px' }}>
+                            <button 
+                              className="btn btn-sm"
+                              onClick={() => handleViewWebhook(webhook)}
+                            >
+                              View
+                            </button>
+                            <button 
+                              className="btn btn-sm btn-secondary"
+                              onClick={() => handleEditWebhook(webhook)}
+                            >
+                              Edit
+                            </button>
+                            <button 
+                              className="btn btn-sm"
+                              style={{ backgroundColor: '#f44336', color: 'white' }}
+                              onClick={() => handleDeleteWebhook(webhook.sid)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         )}
@@ -1834,6 +2130,84 @@ const ConversationsApp = () => {
           </div>
         )}
 
+        {showWebhookModal && (
+          <div className="modal-overlay" onClick={() => {
+            setShowWebhookModal(false);
+            setEditingItem(null);
+            setWebhookForm({ target: '', method: 'POST', filters: [], type: 'webhook' });
+          }}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3>{editingItem ? 'Edit Webhook' : 'Create Webhook'}</h3>
+              <form onSubmit={editingItem ? handleUpdateWebhook : handleCreateWebhook}>
+                <div className="form-group">
+                  <label>Webhook Type *</label>
+                  <select
+                    value={webhookForm.type}
+                    onChange={(e) => setWebhookForm({ ...webhookForm, type: e.target.value })}
+                    required
+                  >
+                    {WEBHOOK_TYPES.map(type => (
+                      <option key={type.value} value={type.value}>{type.label}</option>
+                    ))}
+                  </select>
+                  <small style={{ color: '#666' }}>The type of webhook configuration</small>
+                </div>
+                <div className="form-group">
+                  <label>Target URL *</label>
+                  <input
+                    type="url"
+                    value={webhookForm.target}
+                    onChange={(e) => setWebhookForm({ ...webhookForm, target: e.target.value })}
+                    placeholder="https://example.com/webhook"
+                    required
+                  />
+                  <small style={{ color: '#666' }}>The webhook endpoint that will receive events</small>
+                </div>
+                <div className="form-group">
+                  <label>HTTP Method *</label>
+                  <select
+                    value={webhookForm.method}
+                    onChange={(e) => setWebhookForm({ ...webhookForm, method: e.target.value })}
+                    required
+                  >
+                    <option value="POST">POST</option>
+                    <option value="GET">GET</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Event Filters</label>
+                  <select
+                    multiple
+                    value={webhookForm.filters}
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.selectedOptions, option => option.value);
+                      setWebhookForm({ ...webhookForm, filters: selected });
+                    }}
+                    style={{ height: '200px' }}
+                  >
+                    {WEBHOOK_EVENTS.map(event => (
+                      <option key={event} value={event}>{event}</option>
+                    ))}
+                  </select>
+                  <small style={{ color: '#666' }}>Hold Ctrl/Cmd to select multiple events. Leave empty for all events.</small>
+                </div>
+                <div className="modal-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => {
+                    setShowWebhookModal(false);
+                    setEditingItem(null);
+                    setWebhookForm({ target: '', method: 'POST', filters: [], type: 'webhook' });
+                  }}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={loading}>
+                    {editingItem ? 'Update' : 'Create'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {showExportModal && (
           <div className="modal-overlay" onClick={() => setShowExportModal(false)}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -1928,6 +2302,88 @@ const ConversationsApp = () => {
               
               <div className="modal-actions">
                 <button className="btn btn-primary" onClick={() => setShowOperatorResultsModal(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showParticipantDetailsModal && viewingParticipant && (
+          <div className="modal-overlay" onClick={() => setShowParticipantDetailsModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Participant Details</h3>
+              <div className="info-box">
+                <p><strong>SID:</strong> <code>{viewingParticipant.sid}</code></p>
+                <p><strong>Identity:</strong> {viewingParticipant.identity || 'N/A'}</p>
+                <p><strong>Role:</strong> {viewingParticipant.roleSid || 'Default'}</p>
+                {viewingParticipant.messagingBinding && (
+                  <>
+                    <p><strong>Messaging Type:</strong> {viewingParticipant.messagingBinding.type}</p>
+                    <p><strong>Address:</strong> {viewingParticipant.messagingBinding.address}</p>
+                    {viewingParticipant.messagingBinding.proxy_address && (
+                      <p><strong>Proxy Address:</strong> {viewingParticipant.messagingBinding.proxy_address}</p>
+                    )}
+                  </>
+                )}
+                <p><strong>Date Created:</strong> {new Date(viewingParticipant.dateCreated).toLocaleString()}</p>
+                {viewingParticipant.attributes && viewingParticipant.attributes !== '{}' && (() => {
+                  try {
+                    const attrs = JSON.parse(viewingParticipant.attributes);
+                    if (Object.keys(attrs).length === 0) return null;
+                    return (
+                      <>
+                        <p><strong>Attributes:</strong></p>
+                        <pre style={{ backgroundColor: '#f5f5f5', padding: '10px', borderRadius: '4px', overflow: 'auto' }}>
+                          {JSON.stringify(attrs, null, 2)}
+                        </pre>
+                      </>
+                    );
+                  } catch (e) {
+                    return (
+                      <>
+                        <p><strong>Attributes:</strong></p>
+                        <p style={{ color: '#999' }}>Invalid JSON</p>
+                      </>
+                    );
+                  }
+                })()}
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-primary" onClick={() => setShowParticipantDetailsModal(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showWebhookDetailsModal && viewingWebhook && (
+          <div className="modal-overlay" onClick={() => setShowWebhookDetailsModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Webhook Details</h3>
+              <div className="info-box">
+                <p><strong>SID:</strong> <code>{viewingWebhook.sid}</code></p>
+                <p><strong>Type:</strong> {viewingWebhook.configuration?.type || viewingWebhook.type || 'webhook'}</p>
+                <p><strong>Target URL:</strong> <code>{viewingWebhook.configuration?.url || viewingWebhook.target}</code></p>
+                <p><strong>Method:</strong> {viewingWebhook.configuration?.method || viewingWebhook.method}</p>
+                <p><strong>Event Filters:</strong> {(() => {
+                  const filters = viewingWebhook.configuration?.filters || viewingWebhook.filters;
+                  return filters?.length > 0 ? filters.join(', ') : 'All events';
+                })()}</p>
+                <p><strong>Date Created:</strong> {new Date(viewingWebhook.dateCreated).toLocaleString()}</p>
+                {viewingWebhook.dateUpdated && (
+                  <p><strong>Date Updated:</strong> {new Date(viewingWebhook.dateUpdated).toLocaleString()}</p>
+                )}
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-secondary" onClick={() => {
+                  setShowWebhookDetailsModal(false);
+                  handleEditWebhook(viewingWebhook);
+                }}>
+                  Edit
+                </button>
+                <button className="btn btn-primary" onClick={() => setShowWebhookDetailsModal(false)}>
                   Close
                 </button>
               </div>
