@@ -183,6 +183,134 @@ class ApiClient {
     listServices: () => this.list('intelligence/services'),
     getOperatorResults: (transcriptSid) => this.request(`/api/twilio/intelligence/transcripts/${transcriptSid}/operatorResults`, { method: 'GET' }),
   };
+
+  // WhatsApp Groups - calls Twilio Serverless functions
+  whatsapp = {
+    baseUrl: 'https://whatsapp-group-messaging-1361.twil.io',
+    
+    // Contact Management (via Sync)
+    listContacts: async () => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/sync-contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list' })
+      });
+      if (!response.ok) throw new Error('Failed to list contacts');
+      const data = await response.json();
+      return data.contacts || [];
+    },
+    
+    createContact: async (contactData) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/sync-contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', ...contactData })
+      });
+      if (!response.ok) throw new Error('Failed to create contact');
+      return response.json();
+    },
+    
+    updateContact: async (contactId, contactData) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/sync-contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update', contactId, ...contactData })
+      });
+      if (!response.ok) throw new Error('Failed to update contact');
+      return response.json();
+    },
+    
+    deleteContact: async (contactId) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/sync-contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', contactId })
+      });
+      if (!response.ok) throw new Error('Failed to delete contact');
+      return response.json();
+    },
+    
+    // Group Management
+    createGroup: async (groupData) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/createGroupConversation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(groupData)
+      });
+      if (!response.ok) throw new Error('Failed to create group');
+      return response.json();
+    },
+    
+    getConversations: async (identity) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/getConversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identity })
+      });
+      if (!response.ok) throw new Error('Failed to get conversations');
+      return response.json();
+    },
+    
+    notifyGroup: async (conversationSid, message, from) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/notifyGroup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationSid, message, from })
+      });
+      if (!response.ok) throw new Error('Failed to notify group');
+      return response.json();
+    },
+    
+    addParticipants: async (conversationSid, participants, twilioNumber, templateSid) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/addGroupParticipants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationSid, participants, twilioNumber, templateSid })
+      });
+      if (!response.ok) throw new Error('Failed to add participants');
+      return response.json();
+    },
+    
+    removeParticipant: async (conversationSid, participantSid) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/removeGroupParticipant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationSid, participantSid })
+      });
+      if (!response.ok) throw new Error('Failed to remove participant');
+      return response.json();
+    },
+    
+    updateGroup: async (conversationSid, name, description) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/updateGroupDetails`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationSid, name, description })
+      });
+      if (!response.ok) throw new Error('Failed to update group');
+      return response.json();
+    },
+    
+    archiveGroup: async (conversationSid) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/archiveGroup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationSid })
+      });
+      if (!response.ok) throw new Error('Failed to archive group');
+      return response.json();
+    },
+    
+    deleteGroup: async (conversationSid) => {
+      const response = await fetch(`${this.whatsapp.baseUrl}/deleteGroup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationSid })
+      });
+      if (!response.ok) throw new Error('Failed to delete group');
+      return response.json();
+    }
+  };
 }
 
 export default new ApiClient();

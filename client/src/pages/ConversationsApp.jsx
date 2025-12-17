@@ -80,6 +80,32 @@ const ConversationsApp = () => {
     type: 'webhook'
   });
 
+  // WhatsApp Contacts state
+  const [contacts, setContacts] = useState([]);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [contactForm, setContactForm] = useState({ 
+    name: '', 
+    identifier: '', 
+    team: '' 
+  });
+
+  // WhatsApp Groups state
+  const [whatsappGroups, setWhatsappGroups] = useState([]);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [showNotifyGroupModal, setShowNotifyGroupModal] = useState(false);
+  const [showManageGroupModal, setShowManageGroupModal] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [groupForm, setGroupForm] = useState({ 
+    name: '', 
+    description: '', 
+    twilioNumber: '', 
+    participants: [],
+    templateSid: '' 
+  });
+  const [notifyForm, setNotifyForm] = useState({ message: '', from: '' });
+  const [groupSearch, setGroupSearch] = useState('');
+  const [groupStateFilter, setGroupStateFilter] = useState('all');
+
   // Helper to load filter preferences from localStorage
   const loadFilterPreferences = () => {
     const saved = localStorage.getItem('conversationsAppFilters');
@@ -861,6 +887,82 @@ const ConversationsApp = () => {
       loadConversationDetails(true);
     } catch (err) {
       setError('Failed to update webhook: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // WhatsApp Contacts Handlers
+  const loadContacts = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const contactsList = await apiClient.whatsapp.listContacts();
+      setContacts(contactsList);
+    } catch (err) {
+      setError('Failed to load contacts: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateContact = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      await apiClient.whatsapp.createContact(contactForm);
+      setSuccess('Contact added successfully');
+      setShowContactModal(false);
+      setContactForm({ name: '', identifier: '', team: '' });
+      loadContacts();
+    } catch (err) {
+      setError('Failed to add contact: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditContact = (contact) => {
+    setEditingItem(contact);
+    setContactForm({
+      name: contact.name || '',
+      identifier: contact.identifier || '',
+      team: contact.team || ''
+    });
+    setShowContactModal(true);
+  };
+
+  const handleUpdateContact = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      await apiClient.whatsapp.updateContact(editingItem.contactId, contactForm);
+      setSuccess('Contact updated successfully');
+      setShowContactModal(false);
+      setEditingItem(null);
+      setContactForm({ name: '', identifier: '', team: '' });
+      loadContacts();
+    } catch (err) {
+      setError('Failed to update contact: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteContact = async (contactId) => {
+    if (!confirm('Are you sure you want to delete this contact?')) {
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await apiClient.whatsapp.deleteContact(contactId);
+      setSuccess('Contact deleted successfully');
+      loadContacts();
+    } catch (err) {
+      setError('Failed to delete contact: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -2289,7 +2391,7 @@ const ConversationsApp = () => {
                           <div>
                             {Object.entries(result.extractionResults).map(([key, value]) => (
                               <p key={key} style={{ margin: '5px 0' }}>
-                                <strong>{key}:</strong> {JSON.stringify(value)}
+                                <strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
                               </p>
                             ))}
                           </div>
